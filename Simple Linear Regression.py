@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Feb 14 17:03:57 2023
+Created on Mon Feb 20 17:43:34 2023
 
 @author: lenovo
 """
 
 
-1] Problem
+1]PROBLEM
 
-BUSINESS OBJECTIVE:
-    
-1) Delivery_time -> Predict delivery time using sorting time..(It is Target Variables)
-    
-    
+BUSINESS OBJECTIVE==We are going to predict PROFIT using different attributes..
+
+
 
 #Importing the Necessary Liabrary
 import pandas as pd
@@ -23,199 +21,285 @@ import scipy
 from scipy import stats
 import pylab
 
-#Loading the dataset
+#Loading the Dataset
+df=pd.read_csv('C:/Users/lenovo/OneDrive/Documents/EXCLER ASSIGNMENTS/Multiple Linear Regression/50_Startups.csv')
 
-df=pd.read_csv('C:/Users/lenovo/OneDrive/Documents/360DIGITMG ASSIGNMENT/simple linear regression/datasets/delivery_time.csv')
+#EDA
 df.info()
 df.describe()
-#data organizing(Rename the columns)
-df=df.rename(columns={'Delivery Time':'delivt','Sorting Time':'sortt'})
+df.drop(['State'],axis=1,inplace=True)
+df=df.rename(columns={'R&D Spend':'rdspend','Administration':'admin','Marketing Spend':'marketspend','Profit':'profit'})
 
-#To check whether data is normal or not we use,shapiro test
-stats.shapiro(df.delivt)
-pvalue=0.8963273763656616>0.05:-Data is normal
-stats.shapiro(df.sortt)
-pvalue=0.1881045252084732>0.05:-Data is normal
+#Graphical Visulization(Univariate)
 
-#To check Normality,using graphical visulisation(Univarite Analysis)
-stats.probplot(df.delivt,plot=pylab)
-stats.probplot(df.sortt,plot=pylab)
+#rdspend
+plt.hist(df.rdspend)
+plt.boxplot(df.rdspend)
+plt.bar(height=df.rdspend,x=np.arange(1,51,1))
 
-#For Bivariate Analysis,we use Scatter plot
+#admin
+plt.hist(df.admin)
+plt.boxplot(df.admin)
+plt.bar(height=df.admin,x=np.arange(1,51,1))
 
-plt.scatter(df.sortt,df.delivt,color='green')
+#marketspend
+plt.hist(df.marketspend)
+plt.boxplot(df.marketspend)
+plt.bar(height=df.marketspend,x=np.arange(1,51,1))
 
-#To quantify above,we use Co-relation of Coefficent(r)
+#profit
+plt.hist(df.profit)
+plt.boxplot(df.profit)
+plt.bar(height=df.profit,x=np.arange(1,51,1))
 
-np.corrcoef(df.sortt,df.delivt)
-r=0.82599726 which tell us it is moderate(close to strong) linear relationship.
+#There are Outliers in profit.so we replace it by logical value using Winsorizer function 
+from feature_engine.outliers import Winsorizer
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['profit'])
+df['profit']=w.fit_transform(df[['profit']])
 
-#For Varience,we Calculate CO-Varience
-np.cov(df.sortt,df.delivt)
+#Scatter plot along with Histogram
+sns.pairplot(df)
 
-#Import Liabrary
+#Correlation Matrix
+df.corr()
+#After Analyzing,there is colineratiy problem exists between input variables such as (marketspend and rdspend)
+
+#Preparing the model
 import statsmodels.formula.api as smf
+model=smf.ols('profit ~ rdspend+admin+marketspend',data=df).fit()
+model.summary()
+#P values of admin,marketspend are more than 0.05
 
-#Simple Linear Regression
+#Checking whether any influential values
+#Influential Index plot
+import statsmodels.api as sm
+sm.graphics.influence_plot(model)
 
-model=smf.ols('delivt ~ sortt',data=df).fit()
+#Index 49,48,46,45 have high influence value,so we are going to exclude entire row.
+df1=df.drop(df.index[[49,48,46,45]])
+
+#again prepare the model
+model=smf.ols('profit ~ rdspend+admin+marketspend',data=df1).fit()
 model.summary()
 
-#Predictions for this best fit line
+#Checking Colinearity to decide whether which variables we are going yo remove using VIF.
+#Assumption::- VIF>10=Colinearity
+#Checking Colinearity for individual variables
 
-pred=model.predict(pd.DataFrame(df['sortt']))
+rdspend_c=smf.ols('rdspend ~ admin+marketspend+profit',data=df1).fit().rsquared
+rdsepnd_value=1/(1-rdspend_c)
 
-#Finding RMSE(Error Calculation)
+admin_c=smf.ols('admin ~ rdspend+marketspend+profit',data=df1).fit().rsquared
+admin_value=1/(1-admin_c)
 
-error=df.delivt - pred #ACTUAL VALUE - PREDICTED VALUE
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
+marketspend_c=smf.ols('marketspend ~ admin+rdspend+profit',data=df1).fit().rsquared
+marketsepnd_value=1/(1-marketspend_c)
 
-#Regression Line
+#using admin.. R*2 value get reduced,so we exclude it..
 
-plt.scatter(df.sortt,df.delivt)
-plt.plot(df.sortt,pred,'r')
-plt.legend(['predicted line','observed data'])
-plt.show
+fianl_model=smf.ols('(profit) ~ (marketspend+rdspend)',data=df1).fit()
+fianl_model.summary()
 
-#we do transformations because we got,
-Rsquare(Coefficent of determination=0.68)
-so we need to capture more varience...
-other factors including (r) and (RMSE) values are fine..
+pred=fianl_model.predict(df1)
 
+#Probplot for normality
+stats.probplot(pred,plot=pylab)
 
-#First we do Polynominal Transformation
+#Q-Qplot for normality
+res=fianl_model.resid
+sm.qqplot(res)
 
-
-model1=smf.ols('np.log(delivt) ~ sortt + I(sortt*sortt)',data=df).fit()
-model1.summary()
-#we got  R-squared:=0.765.which is good..
-Hence we use this model...
-but also check all other factors is it fine or not?
-
-pred1=model.predict(pd.DataFrame(df['sortt']))
-
-#Finding RMSE(Error Calculation)
-
-error=df.delivt - pred1 #ACTUAL VALUE - PREDICTED VALUE
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
-
-#The Best Model
-
-from sklearn.model_selection import train_test_split
-train,test=train_test_split(df,test_size=0.2)
-
-finalmodel=smf.ols('np.log(delivt) ~ sortt + I(sortt*sortt)',data=train).fit()
-finalmodel.summary()
-
-#Predictions for test data
-testpred=finalmodel.predict(pd.DataFrame(test))
-testpred_exp=np.exp(testpred)
-
-#RMSE for test data
-
-error=df.delivt - testpred_exp
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
-
-#Predictions for Train data
-trainpred=finalmodel.predict(pd.DataFrame(train))
-trainpred_exp=np.exp(trainpred)
-
-#RMSE for Train data
-
-error=df.delivt - trainpred_exp
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
-
-
-
-
-2]Problem
-    
-BUSINESS OBJECTIVE:-
-
-Salary_hike -> Build a prediction model for Salary_hike
-::--Here the input variable is years of exprience and output/Target Variable is Salary   
-
-#LODING THE DATASET
-df=pd.read_csv('C:/Users/lenovo/OneDrive/Documents/360DIGITMG ASSIGNMENT/simple linear regression/datasets/Salary_Data.csv')
-df.info()
-df.describe()
-
-#Rename the Columns
-df=df.rename(columns={'YearsExperience':'yexp','Salary':'sal'})
-#TO Check normality,we use Shapiro Test
-stats.shapiro(df.yexp)
-stats.shapiro(df.sal)
-
-#check noramlity using Graphical Representation(Univariate Anaylsis)
-stats.probplot(df.yexp,plot=pylab)
-stats.probplot(df.sal,plot=pylab)
-
-#Checking Normality using Bivariate Analysis,we use Scatter Plot(It is Subjective)
-plt.scatter(df.yexp,df.sal)
-
-#To quantify this.we use Co-relation Coefficent(It is Objective)
-np.corrcoef(df.yexp,df.sal)
-
-#Import Liabrary
-import statsmodels.formula.api as smf
-
-#Simple Linear Regression
-model=smf.ols('sal ~ yexp',data=df).fit()
-model.summary()
-
-#Predictions
-pred=model.predict(pd.DataFrame(df['yexp']))
-
-#Error Calculations(RMSE)
-error=df.sal - pred
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
-
-#Regression Line
-plt.scatter(df.yexp,df.sal)
-plt.plot(df.yexp,pred,'r')
-plt.legend(['predicted line','observed data'])
+#Fitted vs Residual Plot
+sns.residplot(x=pred,y=df1.profit,lowess=True)
+plt.xlabel('fitted')
+plt.ylabel('residual')
+plt.title('fitted vs residual')
 plt.show()
 
-#The Best Model
+#RMSE
+error=df1.profit-pred
+sqr=error * error
+mean=np.mean(sqr)
+rmse=np.sqrt(mean)
+rmse
+
+#LOG Transformations
+fianl_model=smf.ols('(profit) ~ np.log(marketspend+rdspend)',data=df1).fit()
+fianl_model.summary()
+
+#expontial Transformations
+fianl_model=smf.ols('np.log(profit) ~ (marketspend+rdspend)',data=df1).fit()
+fianl_model.summary()
+
+#Square Transformations
+fianl_model=smf.ols('(profit) ~ (marketspend+rdspend)*(marketspend+rdspend)',data=df1).fit()
+fianl_model.summary()
+
+#We tune the model using different transformations..but no one gives best result..so we use '(profit) ~ (marketspend+rdspend)' .these transformastion as Final...
+
+
+
 from sklearn.model_selection import train_test_split
-train,test=train_test_split(df,test_size=0.2)
+train,test=train_test_split(df1,test_size=0.2)
 
-finalmodel=smf.ols('sal ~ yexp',data=train).fit()
-finalmodel.summary()
+model_train=smf.ols('profit ~ marketspend+rdspend',data=train).fit()
+model_train.summary()
+#FOR TRAIN DATA
+train_pred=model_train.predict(train)
 
-#Predictions On Test Data
-testpred=finalmodel.predict(pd.DataFrame(test))
+# train residual values 
+train_resid  = train_pred - train.profit
+# RMSE value for train data 
+train_rmse = np.sqrt(np.mean(train_resid * train_resid))
+train_rmse
 
-#RMSE on Test Data
-error=test.sal - testpred
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
-
-#Predictions On Train Data
-trainpred=finalmodel.predict(pd.DataFrame(train))
-
-#RMSE on Test Data
-error=train.sal - trainpred
-sqr=error * error
-mean=np.mean(sqr)
-rmse=np.sqrt(mean)
-rmse
+#FOR TEST DATA
+test_pred=model_train.predict(test)
+#test residual values
+test_resid = test_pred - test.profit
+# RMSE value for test data 
+test_rmse = np.sqrt(np.mean(test_resid * test_resid))
+test_rmse
 
 
+
+2]PROBLEM
+
+BUSINESS OBJECTIVE:-Predicting the Price of model using different attributes.
+
+
+
+#Loading the dataset
+df=pd.read_csv('C:/Users/lenovo/OneDrive/Documents/360DIGITMG ASSIGNMENT/multiple linear/dataset/ToyotaCorolla.csv',encoding=('ISO-8859-1'))
+
+#As per given in the problem,we are excluding some columns which are not relevant.
+df=df[["Price","Age_08_04","KM","HP","cc","Doors","Gears","Quarterly_Tax","Weight"]]
+
+#EDA
+df.info()
+df.describe()
+df=df.rename(columns={'Price':'price','Age_08_04':'age','Quarterly_Tax':'tax','Weight':'weight','Doors':'doors','Gears':'gear'})
+
+#Graphical Representation(Univarate Data)
+plt.boxplot(df.price)
+plt.boxplot(df.age)
+plt.boxplot(df.KM)
+plt.boxplot(df.HP)
+plt.boxplot(df.cc)
+plt.boxplot(df.doors)
+plt.boxplot(df.gear)
+plt.boxplot(df.tax)
+plt.boxplot(df.weight)
+#all columns have outliers,so we remove it by using Winsorizer
+from feature_engine.outliers import Winsorizer
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['price'])
+df['price']=w.fit_transform(df[['price']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['age'])
+df['age']=w.fit_transform(df[['age']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['KM'])
+df['KM']=w.fit_transform(df[['KM']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['HP'])
+df['HP']=w.fit_transform(df[['HP']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['cc'])
+df['cc']=w.fit_transform(df[['cc']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['doors'])
+df['doors']=w.fit_transform(df[['doors']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['gear'])
+df['gear']=w.fit_transform(df[['gear']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['tax'])
+df['tax']=w.fit_transform(df[['tax']])
+w=Winsorizer(capping_method='iqr',tail='both',fold=1.5,variables=['weight'])
+df['weight']=w.fit_transform(df[['weight']])
+
+#Histogram
+plt.hist(df.price)
+plt.hist(df.age)
+plt.hist(df.KM)
+plt.hist(df.HP)
+plt.hist(df.cc)
+plt.hist(df.doors)
+plt.hist(df.gear)
+plt.hist(df.tax)
+plt.hist(df.weight)
+
+#Scatter Diagram(Bivariate Data)
+sns.pairplot(df)
+#Corelation Matrix
+corr=df.corr()
+
+#Regression Model
+import statsmodels.formula.api as smf
+model=smf.ols('price ~ age+KM+HP+cc+doors+gear+tax+weight',data=df).fit()
+model.summary()
+
+pred=model.predict(df)
+
+#LOG Transformations
+model=smf.ols('price ~ np.log(age+KM+HP+cc+doors+gear+tax+weight)',data=df).fit()
+model.summary()
+#EXPONTIAL Transformations
+model=smf.ols('np.log(price) ~ age+KM+HP+cc+doors+gear+tax+weight',data=df).fit()
+model.summary()
+#SQUARE Transformations
+model=smf.ols('price ~ age+KM+HP+cc+doors+gear+tax+weight * age+KM+HP+cc+doors+gear+tax+weight',data=df).fit()
+model.summary()
+#SQUARE ROOT Transformations
+model=smf.ols('(price) ~ np.sqrt(age+KM+HP+cc+doors+gear+tax+weight)',data=df).fit()
+model.summary()
+
+#Finally we choose SQUARE Transformations
+
+f_model=smf.ols('price ~ age+KM+HP+cc+doors+gear+tax+weight * age+KM+HP+cc+doors+gear+tax+weight',data=df).fit()
+f_model.summary()
+
+# Checking whether data has any influential values 
+# Influence Index Plots
+import statsmodels.api as sm
+sm.graphics.influence_plot(f_model)
+
+#some Influential values(rows) we are going to drop
+
+df1=df.drop(df.index[[960,523,1109,1073,696]])
+
+#Develop Final model
+
+f_model=smf.ols('price ~ age+KM+HP+cc+doors+gear+tax+weight * age+KM+HP+cc+doors+gear+tax+weight',data=df1).fit()
+f_model.summary()
+
+predictt=f_model.predict(df1)
+
+#Q-Q Plot
+res=f_model.resid
+stats.probplot(res,plot=pylab)
+
+# Residuals vs Fitted plot
+sns.residplot(x = predictt, y = df1.price, lowess = True)
+plt.xlabel('Fitted')
+plt.ylabel('Residual')
+plt.title('Fitted vs Residual')
+plt.show()
+
+### Splitting the data into train and test data 
+from sklearn.model_selection import train_test_split
+train,test = train_test_split(df1, test_size = 0.2) # 20% test data
+
+trainmodel=f_model=smf.ols('price ~ age+KM+HP+cc+doors+gear+tax+weight * age+KM+HP+cc+doors+gear+tax+weight',data=df1).fit()
+trainmodel.summary()
+
+test_pred = trainmodel.predict(test)
+
+# test residual values 
+test_resid = test_pred - test.price
+# RMSE value for test data 
+test_rmse = np.sqrt(np.mean(test_resid * test_resid))
+test_rmse
+
+
+# train_data prediction
+train_pred = trainmodel.predict(train)
+
+# train residual values 
+train_resid  = train_pred - train.price
+# RMSE value for train data 
+train_rmse = np.sqrt(np.mean(train_resid * train_resid))
+train_rmse
